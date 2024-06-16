@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"name": "lora-e5-balloon-repeater",
+			"path": "../lora-e5-balloon-repeater"
+		}
+	],
+	"settings": {}
+}
