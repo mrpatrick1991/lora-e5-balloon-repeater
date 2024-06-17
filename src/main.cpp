@@ -1,11 +1,10 @@
 #include <Arduino.h>
 #include <RadioLib.h>
-#include "stm32wlxx_hal.h"
+#include <stm32wlxx_hal.h>
 
 // config
 #define DEBUG_SERIAL_BAUD 115200
 #define GPS_SERIAL_BAUD 9600
-#define DEBUG_SERIAL Serial
 
 // debug 
 #define DEBUG true
@@ -36,25 +35,19 @@ static const Module::RfSwitchMode_t rfswitch_table[] = {
 };
 
 // globals
-int radio_state = 0;
+int radioState = 0;
 volatile bool receivedFlag = false;    
 volatile bool transmittedFlag = false;     
 int rxBufferSize = 0;
 byte rxBuffer[256];
 
 // callback function when packets are received or transmitted
-void setPacketFlag(void) {
-  uint16_t irqstatus = radio.getIrqStatus();
-  if (irqstatus == RADIOLIB_SX126X_IRQ_RX_DONE) {
-    receivedFlag = true;
-  }
-  else if (irqstatus == RADIOLIB_SX126X_IRQ_TX_DONE) {
+void setPacketTxFlag(void) {
     transmittedFlag = true;
-  }
-  else {
-    receivedFlag = false;
-    transmittedFlag = false;
-  }
+}
+
+void setPacketRxFlag(void) {
+    receivedFlag = true;
 }
 
 void setup() {
@@ -66,40 +59,40 @@ void setup() {
 
   D_println(F("** startup **"));
   D_print(F("[STM32WL] initializing... "));
-  radio_state = radio.begin(906.875, 250.0, 11, 5, 0x4B, 22, 16);
+  radioState = radio.begin(906.875, 250.0, 11, 5, 0x4B, 22, 16);
 
-  if (radio_state == RADIOLIB_ERR_NONE) {
+  if (radioState == RADIOLIB_ERR_NONE) {
     D_println(F("OK"));
   }
   else {
     D_print(F("failed, code: "));
-    D_println(radio_state);
+    D_println(radioState);
     while (1) {};
   }
 
   D_print(F("[STM32WL] setting TCXO voltage... "));
-  radio_state = radio.setTCXO(1.7);
+  radioState = radio.setTCXO(1.6);
 
-  if (radio_state == RADIOLIB_ERR_NONE) {
+  if (radioState == RADIOLIB_ERR_NONE) {
     D_println(F("OK"));
   }
   else {
     D_print(F("failed, code: "));
-    D_println(radio_state);
+    D_println(radioState);
     while (1) {};
   }
 
-  radio.setDio1Action(setPacketFlag);
+  radio.setDio1Action(setPacketRxFlag);
 
   D_print(F("[STM32WL] starting recieve... "));
-  radio_state = radio.startReceive();
+  radioState = radio.startReceive();
 
-  if (radio_state == RADIOLIB_ERR_NONE) {
+  if (radioState == RADIOLIB_ERR_NONE) {
     D_println(F("OK"));
   }
   else {
     D_print(F("failed, code: "));
-    D_println(radio_state);
+    D_println(radioState);
     while (1) {};
   }
 }
@@ -110,9 +103,11 @@ void loop() {
 
   if (receivedFlag) {
     rxBufferSize = radio.getPacketLength();
-    radio_state = radio.readData(rxBuffer,rxBufferSize);
+    radioState = radio.readData(rxBuffer,rxBufferSize);
   
-    if (radio_state == RADIOLIB_ERR_NONE) {
+    if (radioState == RADIOLIB_ERR_NONE) {
+      receivedFlag = false;
+
       D_print(F("[STM32WL] received packet: "));
       for (int i=0; i< rxBufferSize; i++) {
         D_print(rxBuffer[i], HEX);
@@ -127,36 +122,31 @@ void loop() {
       D_print(radio.getSNR());
       D_println(F(" dB"));
     }
-    else if (radio_state == RADIOLIB_ERR_CRC_MISMATCH) {
+    else if (radioState == RADIOLIB_ERR_CRC_MISMATCH) {
       D_println(F("CRC error")); // packet was received, but is malformed
     }
     else {
       D_print(F("failed, code: "));
-      D_println(radio_state);
+      D_println(radioState);
     }
     
     D_print("[STM32WL] starting receive... ");
-    radio_state = radio.startReceive();
-    if (radio_state == RADIOLIB_ERR_NONE) {
+    radioState = radio.startReceive();
+    if (radioState == RADIOLIB_ERR_NONE) {
       D_println(F("OK"));
     }
     else {
       D_print(F("failed, code: "));
-      D_println(radio_state);
+      D_println(radioState);
     }
-
-    receivedFlag = false;
-    rxBufferSize = 0;
-    memset(rxBuffer,0,sizeof(rxBuffer));
 
   }
 
   if (transmittedFlag) {
     transmittedFlag = false;
-    radio.finishTransmit();
   }
 
-  if (millis() - last_ms > 5000) {
+  if (millis() - last_ms > 2000) {
     last_ms = millis();
     D_print(F("runtime: "));
     D_println(millis());
