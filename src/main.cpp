@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <RadioLib.h>
-#include "stm32wlxx_hal.h"
 
 // config
 #define DEBUG_SERIAL_BAUD 115200
@@ -66,7 +65,7 @@ void setup() {
 
   D_println(F("** startup **"));
   D_print(F("[STM32WL] initializing... "));
-  radio_state = radio.begin(906.875, 250.0, 11, 5, 0x4B, 22, 16);
+  radio_state = radio.begin(906.875, 250.0, 11, 5, 0x2B, 22, 16);
 
   if (radio_state == RADIOLIB_ERR_NONE) {
     D_println(F("OK"));
@@ -113,9 +112,15 @@ void loop() {
     radio_state = radio.readData(rxBuffer,rxBufferSize);
   
     if (radio_state == RADIOLIB_ERR_NONE) {
-      D_print(F("[STM32WL] received packet: "));
+      D_print(F("[STM32WL] received packet (hex): "));
       for (int i=0; i< rxBufferSize; i++) {
         D_print(rxBuffer[i], HEX);
+      }
+      D_println();
+
+      D_print(F("[STM32WL] received packet: "));
+      for (int i=0; i< rxBufferSize; i++) {
+        D_write(rxBuffer[i]);
       }
       D_println();
 
@@ -156,7 +161,7 @@ void loop() {
     radio.finishTransmit();
   }
 
-  if (millis() - last_ms > 5000) {
+  if (millis() - last_ms > 10000) {
     last_ms = millis();
     D_print(F("runtime: "));
     D_println(millis());
