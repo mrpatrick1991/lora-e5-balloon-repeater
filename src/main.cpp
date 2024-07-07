@@ -1,31 +1,15 @@
 #include <Arduino.h>
 #include <RadioLib.h>
 #include <stm32wlxx_hal.h>
+#include <TinyGPS++.h>
+#include <HardwareSerial.h>
+#include "config.h"
 
-// config
-#define DEBUG_SERIAL_BAUD 115200
-#define GPS_SERIAL_BAUD 9600
-
-// debug 
-#define DEBUG true
-
-#if DEBUG
-  #define D_SerialBegin(...) Serial.begin(__VA_ARGS__);
-  #define D_print(...)    Serial.print(__VA_ARGS__)
-  #define D_write(...)    Serial.write(__VA_ARGS__)
-  #define D_println(...)  Serial.println(__VA_ARGS__)
-#else
-  #define D_SerialBegin(...)
-  #define D_print(...)
-  #define D_write(...)
-  #define D_println(...)
-#endif
-
-// hardware definitions
+// hardware definitions, specific to the LoRa e5 from Seeed Studio
 STM32WLx radio = new STM32WLx_Module();
 
-static const uint32_t rfswitch_pins[] =
-                         {PA4,  PA5, PA5, RADIOLIB_NC, RADIOLIB_NC};
+// hardware pin assignments specific to the LoRa e5 module
+static const uint32_t rfswitch_pins[] = {PA4,  PA5, PA5, RADIOLIB_NC, RADIOLIB_NC};
 static const Module::RfSwitchMode_t rfswitch_table[] = {
   {STM32WLx::MODE_IDLE, {LOW, LOW, LOW}},
   {STM32WLx::MODE_RX, {HIGH, LOW, LOW}},
@@ -34,124 +18,207 @@ static const Module::RfSwitchMode_t rfswitch_table[] = {
   END_OF_MODE_TABLE,
 };
 
-// globals
-int radioState = 0;
-volatile bool receivedFlag = false;    
-volatile bool transmittedFlag = false;     
-int rxBufferSize = 0;
-byte rxBuffer[256];
+// state machine 
+enum STATE {
+  LISTEN,         // receive mode, wait for a packet to arrive
+  START_TRANSMIT, // re-transmit the packet
+  WAIT_TRANSMIT,  // await packet transmission completion or timeout
+  END_TRANSMIT    // finish transmitting the packet and clean-up, then go back to receive mode.
+};
 
-// callback function when packets are received or transmitted
-void setPacketTxFlag(void) {
-    transmittedFlag = true;
+// GPS 
+TinyGPSPlus gps;
+HardwareSerial gps_serial(GPS_RX,GPS_TX);
+
+// globals
+int radio_state = 0;
+volatile bool packet_flag = false;
+byte rx_buffer[RX_BUFFER_MAX_SIZE];
+int rx_buffer_size = 0;
+long packet_tx_ms_clock = 0;
+long gps_debug_print_ms_clock = 0;
+enum STATE state;
+
+// callback functions for when packets are received or transmitted
+void set_packet_flag(void) {
+    packet_flag = true;
 }
 
-void setPacketRxFlag(void) {
-    receivedFlag = true;
+bool check_radio_state(int state, bool reset_on_error) {
+  if (state != RADIOLIB_ERR_NONE) {
+    D_print(F("radio failure, code: "));
+    D_println(state);
+    if (reset_on_error) {
+      delay(1000); //if the radio failed to initialize, there is a hardware problem. wait a moment and attempt a system reset.
+      NVIC_SystemReset();
+    }
+    return false;
+  }
+  else {
+    D_println(F("OK"));
+    return true;
+  }
 }
 
 void setup() {
-
-  // hardware init
+  // hardware
   D_SerialBegin(DEBUG_SERIAL_BAUD);
 
+  D_println(F("*** start ***"));
+
+  D_print(F("[GPS]: initializing... "));
+  gps_serial.begin(GPS_BAUD);
+  if (GPS_USE_ENABLE_PIN) {
+    pinMode(GPS_ENABLE_PIN, OUTPUT);
+    digitalWrite(GPS_ENABLE_PIN, LOW);
+  }
+
+  gps_debug_print_ms_clock = millis();
+  bool gps_ok = false; 
+  while(millis() - gps_debug_print_ms_clock <= 5000l) { // give the GPS 5 minutes to provide valid NMEA data
+    while (gps_serial.available()) {
+      gps.encode(gps_serial.read()); 
+    }
+    if (gps.charsProcessed() > 0 && gps.passedChecksum() > 0) {
+      gps_ok = true;
+      D_println("[GPS]: OK");
+      break;
+    }
+  }
+
+  if (!gps_ok) {
+    delay(1000); // wait a second
+    D_println("[GPS]: not receiving valid NMEA sentences. System reset.");
+    NVIC_SystemReset(); // if no valid data from the GPS is received, it's a hardware problem, try a system reset.
+  }
+
+  D_print(F("[STM32WL]: initializing... "));
   radio.setRfSwitchTable(rfswitch_pins, rfswitch_table);
 
-  D_println(F("** startup **"));
-  D_print(F("[STM32WL] initializing... "));
-  radioState = radio.begin(906.875, 250.0, 11, 5, 0x4B, 22, 16);
+  radio_state = radio.begin(LORA_FREQ_MHZ, LORA_BW_KHZ, LORA_SPREAD_FACTOR, LORA_CR, LORA_SYNCWORD, LORA_TXPOWER_DBM, LORA_PREAMBLE_LEN);
+  check_radio_state(radio_state, true);
 
-  if (radioState == RADIOLIB_ERR_NONE) {
-    D_println(F("OK"));
-  }
-  else {
-    D_print(F("failed, code: "));
-    D_println(radioState);
-    while (1) {};
-  }
+  D_print(F("[STM32WL]: setting TCXO voltage... "));
+  radio_state = radio.setTCXO(TCXO_VOLT);
+  check_radio_state(radio_state, true);
 
-  D_print(F("[STM32WL] setting TCXO voltage... "));
-  radioState = radio.setTCXO(1.6);
+  radio.setDio1Action(set_packet_flag);
 
-  if (radioState == RADIOLIB_ERR_NONE) {
-    D_println(F("OK"));
-  }
-  else {
-    D_print(F("failed, code: "));
-    D_println(radioState);
-    while (1) {};
-  }
+  D_print(F("[STM32WL]: starting recieve... "));
+  radio_state = radio.startReceive();
+  check_radio_state(radio_state, true);
 
-  radio.setDio1Action(setPacketRxFlag);
-
-  D_print(F("[STM32WL] starting recieve... "));
-  radioState = radio.startReceive();
-
-  if (radioState == RADIOLIB_ERR_NONE) {
-    D_println(F("OK"));
-  }
-  else {
-    D_print(F("failed, code: "));
-    D_println(radioState);
-    while (1) {};
-  }
+  state = LISTEN; // end of setup, start listening for incoming packets
+  D_println(F("startup finished."));
 }
-
-long last_ms = 0;
 
 void loop() {
 
-  if (receivedFlag) {
-    rxBufferSize = radio.getPacketLength();
-    radioState = radio.readData(rxBuffer,rxBufferSize);
+  while (gps_serial.available()) {
+    gps.encode(gps_serial.read()); // read NMEA characters from the GPS as they come in
+  }
+
+  if (DEBUG) { // print GPS data every 5 seconds if debug is enabled
+    if (millis() - gps_debug_print_ms_clock > 5000l) {
+      gps_debug_print_ms_clock = millis();
+      D_print(F("[GPS]: characters read: "));
+      D_println(gps.charsProcessed());
+      D_print(F("[GPS]: good checksums: "));
+      D_println(gps.passedChecksum());
+      D_print(F("[GPS]: satellites: "));
+      D_println(gps.satellites.value());
+      D_print(F("[GPS]: latitude (deg): "));
+      D_println(gps.location.lat(),6);
+      D_print(F("[GPS]: longitude (deg): "));
+      D_println(gps.location.lng(),6);
+      D_print(F("[GPS]: altitude (m): "));
+      D_println(gps.altitude.meters());
+    }
+  }
+
+  switch (state) {
+
+    case LISTEN:
+      if (packet_flag) {
+        packet_flag = false;
+        rx_buffer_size = radio.getPacketLength();
+        radio_state = radio.readData(rx_buffer, rx_buffer_size);
   
-    if (radioState == RADIOLIB_ERR_NONE) {
-      receivedFlag = false;
+        if (radio_state == RADIOLIB_ERR_NONE) {
+          D_print(F("[STM32WL]: received packet: "));
+          for (int i=0; i< rx_buffer_size; i++) {
+            D_print(rx_buffer[i], HEX);
+          }
+          D_println();
+          D_print(F("RSSI:\t\t"));
+          D_print(radio.getRSSI());
+          D_println(F(" dBm"));
 
-      D_print(F("[STM32WL] received packet: "));
-      for (int i=0; i< rxBufferSize; i++) {
-        D_print(rxBuffer[i], HEX);
+          D_print(F("SNR:\t\t"));
+          D_print(radio.getSNR());
+          D_println(F(" dB"));
+
+          state = START_TRANSMIT; // valid packet is received, so start repeating it.
+          D_print("[STATE MACHINE]: transition to state: ");
+          D_println(state);
+          break;
+        }
+
+        else { // there was a problem reading the packet, drop it and then keep receiving.
+          memset(rx_buffer, 0, RX_BUFFER_MAX_SIZE);
+          rx_buffer_size = 0;
+          D_print(F("[STM32WL]: receive failed, code: ")); 
+          D_println(radio_state); 
+          break;
+        }
       }
-      D_println();
+    break;
 
-      D_print(F("RSSI:\t\t"));
-      D_print(radio.getRSSI());
-      D_println(F(" dBm"));
+    case START_TRANSMIT:
+      packet_flag = false; // will be set to true by interrupt when the transmission finishes
+      radio.startTransmit(rx_buffer,rx_buffer_size); // start transmitting from the packet buffer
+      packet_tx_ms_clock = millis(); // keep track of how long the packet takes to transmit.
+      state = WAIT_TRANSMIT;
+      D_print("[STATE MACHINE]:  transition to state: ");
+      D_println(state);
+      break;
+      
+    case WAIT_TRANSMIT: // we are waiting for packet transmission to finish. we cannot receive during this time.
+      if (packet_flag) {
+        packet_flag = false;
+        D_print(F("[STM32WL]: transmission finished, time elapsed: "));
+        D_print(millis() - packet_tx_ms_clock);
+        D_println(F(" ms."));
 
-      D_print(F("SNR:\t\t"));
-      D_print(radio.getSNR());
-      D_println(F(" dB"));
-    }
-    else if (radioState == RADIOLIB_ERR_CRC_MISMATCH) {
-      D_println(F("CRC error")); // packet was received, but is malformed
-    }
-    else {
-      D_print(F("failed, code: "));
-      D_println(radioState);
-    }
-    
-    D_print("[STM32WL] starting receive... ");
-    radioState = radio.startReceive();
-    if (radioState == RADIOLIB_ERR_NONE) {
-      D_println(F("OK"));
-    }
-    else {
-      D_print(F("failed, code: "));
-      D_println(radioState);
-    }
+        state = END_TRANSMIT;
+        D_print("[STATE MACHINE]: transition to state: ");
+        D_println(state);
+        break;
+      }
+      else if (millis() - packet_tx_ms_clock > PACKET_TX_TIMEOUT_SEC*1000l) {
+        D_println(F("[STM32WL]: transmission timed out. "));  // timed out waiting for the transmission to finish.
+        state = END_TRANSMIT;
+        D_print("[STATE MACHINE]: transition to state: ");
+        D_println(state);
+        break;     
+      }
+      else {
+        break; // still waiting, do nothing.
+      }
 
-  }
+    case END_TRANSMIT:
+      D_print("[STM32WL]: finishing transmit ");
+      radio_state = radio.finishTransmit();
+      check_radio_state(radio_state, false);
 
-  if (transmittedFlag) {
-    transmittedFlag = false;
-  }
-
-  if (millis() - last_ms > 2000) {
-    last_ms = millis();
-    D_print(F("runtime: "));
-    D_println(millis());
-    //NVIC_SystemReset();
-    //radio_state = radio.begin(906.875, 250.0, 11, 5, 0x4B, 22, 16);
-    //radio_state = radio.startReceive();
+      D_print("[STM32WL]: starting receive ");
+      radio_state = radio.startReceive();
+      // if we fail to put the radio back into receive mode, we could get stuck here, so reset the mcu if it fails. 
+      check_radio_state(radio_state, true); 
+      
+      state = LISTEN; // back to listening
+      D_print("[STATE MACHINE] transition to state: ");
+      D_println(state);
+      break;
   }
 }
