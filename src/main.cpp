@@ -32,12 +32,12 @@ HardwareSerial gps_serial(GPS_RX,GPS_TX);
 
 // globals
 int radio_state = 0;
-volatile bool packet_flag = false;
 byte rx_buffer[RX_BUFFER_MAX_SIZE];
 int rx_buffer_size = 0;
 long packet_tx_ms_clock = 0;
 long debug_print_ms_clock = 0;
 enum STATE state;
+volatile bool packet_flag = false;
 
 // callback functions for when packets are received or transmitted
 void set_packet_flag(void) {
@@ -65,7 +65,6 @@ void setup() {
   D_SerialBegin(DEBUG_SERIAL_BAUD);
 
   D_println(F("*** start ***"));
-
   D_print(F("[GPS]: initializing... "));
   gps_serial.begin(GPS_BAUD);
   if (GPS_USE_ENABLE_PIN) {
@@ -75,20 +74,20 @@ void setup() {
 
   debug_print_ms_clock = millis();
   bool gps_ok = false; 
-  while(millis() - debug_print_ms_clock <= 5000l) { // give the GPS 5 minutes to provide valid NMEA data
+  while(millis() - debug_print_ms_clock <= 5000l) { // give the GPS 5 seconds to provide valid NMEA data
     while (gps_serial.available()) {
       gps.encode(gps_serial.read()); 
     }
     if (gps.charsProcessed() > 0 && gps.passedChecksum() > 0) {
       gps_ok = true;
-      D_println("[GPS]: OK");
+      D_println("OK");
       break;
     }
   }
 
   if (!gps_ok) {
     delay(1000); // wait a second
-    D_println("[GPS]: not receiving valid NMEA sentences. System reset.");
+    D_println(F("[GPS]: not receiving valid NMEA sentences. System reset."));
     NVIC_SystemReset(); // if no valid data from the GPS is received, it's a hardware problem, try a system reset.
   }
 
@@ -120,7 +119,7 @@ void loop() {
 
   if (DEBUG) { // print GPS data every 5 seconds if debug is enabled
     if (millis() - debug_print_ms_clock > 5000l) {
-      gps_debug_print_ms_clock = millis();
+      debug_print_ms_clock = millis();
       D_print(F("[GPS]: characters read: "));
       D_println(gps.charsProcessed());
       D_print(F("[GPS]: good checksums: "));
@@ -145,21 +144,21 @@ void loop() {
         radio_state = radio.readData(rx_buffer, rx_buffer_size);
   
         if (radio_state == RADIOLIB_ERR_NONE) {
-          D_print(F("[STM32WL]: received packet: "));
+          D_print(F("[STM32WL]: received packet: ")); // if debug enabled, print the packet contents and snr/rssi
           for (int i=0; i< rx_buffer_size; i++) {
             D_print(rx_buffer[i], HEX);
           }
           D_println();
-          D_print(F("RSSI:\t\t"));
+          D_print(F("[STM32WL]: RSSI: "));
           D_print(radio.getRSSI());
           D_println(F(" dBm"));
 
-          D_print(F("SNR:\t\t"));
+          D_print(F("[STM32WL]: SNR: "));
           D_print(radio.getSNR());
           D_println(F(" dB"));
 
-          state = START_TRANSMIT; // valid packet is received, so start repeating it.
-          D_print("[STATE MACHINE]: transition to state: ");
+          state = START_TRANSMIT; // a valid packet was received, so start repeating it.
+          D_print(F("[STATE MACHINE]: transition to state: "));
           D_println(state);
           break;
         }
@@ -175,11 +174,11 @@ void loop() {
     break;
 
     case START_TRANSMIT:
-      packet_flag = false; // will be set to true by interrupt when the transmission finishes
+      packet_flag = false; // ISR sets to true when the transmission finishes or a packet is received
       radio.startTransmit(rx_buffer,rx_buffer_size); // start transmitting from the packet buffer
       packet_tx_ms_clock = millis(); // keep track of how long the packet takes to transmit.
       state = WAIT_TRANSMIT;
-      D_print("[STATE MACHINE]:  transition to state: ");
+      D_print(F("[STATE MACHINE]:  transition to state: "));
       D_println(state);
       break;
       
@@ -191,14 +190,14 @@ void loop() {
         D_println(F(" ms."));
 
         state = END_TRANSMIT;
-        D_print("[STATE MACHINE]: transition to state: ");
+        D_print(F("[STATE MACHINE]: transition to state: "));
         D_println(state);
         break;
       }
       else if (millis() - packet_tx_ms_clock > PACKET_TX_TIMEOUT_SEC*1000l) {
-        D_println(F("[STM32WL]: transmission timed out. "));  // timed out waiting for the transmission to finish.
+        D_println(F("[STM32WL]: transmission timed out "));  // timed out waiting for the transmission to finish.
         state = END_TRANSMIT;
-        D_print("[STATE MACHINE]: transition to state: ");
+        D_print(F("[STATE MACHINE]: transition to state: "));
         D_println(state);
         break;     
       }
@@ -207,17 +206,17 @@ void loop() {
       }
 
     case END_TRANSMIT:
-      D_print("[STM32WL]: finishing transmit ");
+      D_print(F("[STM32WL]: finishing transmit "));
       radio_state = radio.finishTransmit();
       check_radio_state(radio_state, false);
 
-      D_print("[STM32WL]: starting receive ");
+      D_print(F("[STM32WL]: starting receive "));
       radio_state = radio.startReceive();
-      // if we fail to put the radio back into receive mode, we could get stuck here, so reset the mcu if it fails. 
+      // if we fail to put the radio back into receive mode, we could get stuck here, so reset the mcu. 
       check_radio_state(radio_state, true); 
       
-      state = LISTEN; // back to listening
-      D_print("[STATE MACHINE] transition to state: ");
+      state = LISTEN; // go back to listening
+      D_print(F("[STATE MACHINE]: transition to state: "));
       D_println(state);
       break;
   }
