@@ -1,6 +1,7 @@
 // print debug messsages
 #define DEBUG true
 #define DEBUG_SERIAL Serial
+#define GPS_DEBUG_PRINT_SEC 5 // print GPS data every n seconds when debug is enabled
 
 // radio settings
 #define DEBUG_SERIAL_BAUD 115200

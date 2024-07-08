@@ -3,6 +3,7 @@
 #include <stm32wlxx_hal.h>
 #include <TinyGPS++.h>
 #include <HardwareSerial.h>
+#include <pb.h>
 #include "config.h"
 
 // hardware definitions, specific to the LoRa e5 from Seeed Studio
@@ -64,7 +65,7 @@ void setup() {
   // hardware
   D_SerialBegin(DEBUG_SERIAL_BAUD);
 
-  D_println(F("*** start ***"));
+  D_println(F("[MCU]: start"));
   D_print(F("[GPS]: initializing... "));
   gps_serial.begin(GPS_BAUD);
   if (GPS_USE_ENABLE_PIN) {
@@ -108,7 +109,7 @@ void setup() {
   check_radio_state(radio_state, true);
 
   state = LISTEN; // end of setup, start listening for incoming packets
-  D_println(F("startup finished."));
+  D_println(F("[MCU]: startup finished, running state machine."));
 }
 
 void loop() {
@@ -118,7 +119,7 @@ void loop() {
   }
 
   if (DEBUG) { // print GPS data every 5 seconds if debug is enabled
-    if (millis() - debug_print_ms_clock > 5000l) {
+    if (millis() - debug_print_ms_clock > GPS_DEBUG_PRINT_SEC*1000l) {
       debug_print_ms_clock = millis();
       D_print(F("[GPS]: characters read: "));
       D_println(gps.charsProcessed());
@@ -145,8 +146,10 @@ void loop() {
   
         if (radio_state == RADIOLIB_ERR_NONE) {
           D_print(F("[STM32WL]: received packet: ")); // if debug enabled, print the packet contents and snr/rssi
-          for (int i=0; i< rx_buffer_size; i++) {
-            D_print(rx_buffer[i], HEX);
+          if (DEBUG) {
+            for (int i=0; i< rx_buffer_size; i++) {
+              D_print(rx_buffer[i], HEX);
+            }
           }
           D_println();
           D_print(F("[STM32WL]: RSSI: "));
@@ -156,6 +159,10 @@ void loop() {
           D_print(F("[STM32WL]: SNR: "));
           D_print(radio.getSNR());
           D_println(F(" dB"));
+
+          D_print(F("[STM32WL]: bytes: "));
+          D_print(rx_buffer_size);
+          D_println(F(""));
 
           state = START_TRANSMIT; // a valid packet was received, so start repeating it.
           D_print(F("[STATE MACHINE]: transition to state: "));
