@@ -36,7 +36,7 @@ volatile bool packet_flag = false;
 byte rx_buffer[RX_BUFFER_MAX_SIZE];
 int rx_buffer_size = 0;
 long packet_tx_ms_clock = 0;
-long gps_debug_print_ms_clock = 0;
+long debug_print_ms_clock = 0;
 enum STATE state;
 
 // callback functions for when packets are received or transmitted
@@ -73,9 +73,9 @@ void setup() {
     digitalWrite(GPS_ENABLE_PIN, LOW);
   }
 
-  gps_debug_print_ms_clock = millis();
+  debug_print_ms_clock = millis();
   bool gps_ok = false; 
-  while(millis() - gps_debug_print_ms_clock <= 5000l) { // give the GPS 5 minutes to provide valid NMEA data
+  while(millis() - debug_print_ms_clock <= 5000l) { // give the GPS 5 minutes to provide valid NMEA data
     while (gps_serial.available()) {
       gps.encode(gps_serial.read()); 
     }
@@ -119,7 +119,7 @@ void loop() {
   }
 
   if (DEBUG) { // print GPS data every 5 seconds if debug is enabled
-    if (millis() - gps_debug_print_ms_clock > 5000l) {
+    if (millis() - debug_print_ms_clock > 5000l) {
       gps_debug_print_ms_clock = millis();
       D_print(F("[GPS]: characters read: "));
       D_println(gps.charsProcessed());
