@@ -22,8 +22,8 @@
 #define GPS_RX PB7
 #define GPS_TX PB6
 #define GPS_BAUD 9600
-#define GPS_USE_ENABLE_PIN 0
-#define GPS_ENABLE_PIN PB4
+#define GPS_USE_ENABLE_PIN 1
+#define GPS_ENABLE_PIN PA0
 
 #if DEBUG
   #define D_SerialBegin(...) DEBUG_SERIAL.begin(__VA_ARGS__);

@@ -20,7 +20,7 @@ static const Module::RfSwitchMode_t rfswitch_table[] = {
 };
 
 // state machine 
-enum STATE {
+enum RADIO_STATE {
   LISTEN,         // receive mode, wait for a packet to arrive
   START_TRANSMIT, // re-transmit the packet
   WAIT_TRANSMIT,  // await packet transmission completion or timeout
@@ -32,12 +32,12 @@ TinyGPSPlus gps;
 HardwareSerial gps_serial(GPS_RX,GPS_TX);
 
 // globals
-int radio_state = 0;
+int radiolib_state = 0;
 byte rx_buffer[RX_BUFFER_MAX_SIZE];
 int rx_buffer_size = 0;
 long packet_tx_ms_clock = 0;
 long debug_print_ms_clock = 0;
-enum STATE state;
+enum RADIO_STATE radio_state;
 volatile bool packet_flag = false;
 
 // callback functions for when packets are received or transmitted
@@ -70,7 +70,7 @@ void setup() {
   gps_serial.begin(GPS_BAUD);
   if (GPS_USE_ENABLE_PIN) {
     pinMode(GPS_ENABLE_PIN, OUTPUT);
-    digitalWrite(GPS_ENABLE_PIN, LOW);
+    digitalWrite(GPS_ENABLE_PIN, HIGH);
   }
 
   debug_print_ms_clock = millis();
@@ -95,20 +95,20 @@ void setup() {
   D_print(F("[STM32WL]: initializing... "));
   radio.setRfSwitchTable(rfswitch_pins, rfswitch_table);
 
-  radio_state = radio.begin(LORA_FREQ_MHZ, LORA_BW_KHZ, LORA_SPREAD_FACTOR, LORA_CR, LORA_SYNCWORD, LORA_TXPOWER_DBM, LORA_PREAMBLE_LEN);
-  check_radio_state(radio_state, true);
+  radiolib_state = radio.begin(LORA_FREQ_MHZ, LORA_BW_KHZ, LORA_SPREAD_FACTOR, LORA_CR, LORA_SYNCWORD, LORA_TXPOWER_DBM, LORA_PREAMBLE_LEN);
+  check_radio_state(radiolib_state, true);
 
   D_print(F("[STM32WL]: setting TCXO voltage... "));
-  radio_state = radio.setTCXO(TCXO_VOLT);
-  check_radio_state(radio_state, true);
+  radiolib_state = radio.setTCXO(TCXO_VOLT);
+  check_radio_state(radiolib_state, true);
 
   radio.setDio1Action(set_packet_flag);
 
   D_print(F("[STM32WL]: starting recieve... "));
-  radio_state = radio.startReceive();
-  check_radio_state(radio_state, true);
+  radiolib_state = radio.startReceive();
+  check_radio_state(radiolib_state, true);
 
-  state = LISTEN; // end of setup, start listening for incoming packets
+  radio_state = LISTEN; // end of setup, start listening for incoming packets
   D_println(F("[MCU]: startup finished, running state machine."));
 }
 
@@ -136,15 +136,15 @@ void loop() {
     }
   }
 
-  switch (state) {
+  switch (radio_state) {
 
     case LISTEN:
       if (packet_flag) {
         packet_flag = false;
         rx_buffer_size = radio.getPacketLength();
-        radio_state = radio.readData(rx_buffer, rx_buffer_size);
+        radiolib_state = radio.readData(rx_buffer, rx_buffer_size);
   
-        if (radio_state == RADIOLIB_ERR_NONE) {
+        if (radiolib_state == RADIOLIB_ERR_NONE) {
           D_print(F("[STM32WL]: received packet: ")); // if debug enabled, print the packet contents and snr/rssi
           if (DEBUG) {
             for (int i=0; i< rx_buffer_size; i++) {
@@ -164,9 +164,9 @@ void loop() {
           D_print(rx_buffer_size);
           D_println(F(""));
 
-          state = START_TRANSMIT; // a valid packet was received, so start repeating it.
+          radio_state = START_TRANSMIT; // a valid packet was received, so start repeating it.
           D_print(F("[STATE MACHINE]: transition to state: "));
-          D_println(state);
+          D_println(radio_state);
           break;
         }
 
@@ -184,9 +184,9 @@ void loop() {
       packet_flag = false; // ISR sets to true when the transmission finishes or a packet is received
       radio.startTransmit(rx_buffer,rx_buffer_size); // start transmitting from the packet buffer
       packet_tx_ms_clock = millis(); // keep track of how long the packet takes to transmit.
-      state = WAIT_TRANSMIT;
+      radio_state = WAIT_TRANSMIT;
       D_print(F("[STATE MACHINE]:  transition to state: "));
-      D_println(state);
+      D_println(radio_state);
       break;
       
     case WAIT_TRANSMIT: // we are waiting for packet transmission to finish. we cannot receive during this time.
@@ -196,16 +196,16 @@ void loop() {
         D_print(millis() - packet_tx_ms_clock);
         D_println(F(" ms."));
 
-        state = END_TRANSMIT;
+        radio_state = END_TRANSMIT;
         D_print(F("[STATE MACHINE]: transition to state: "));
-        D_println(state);
+        D_println(radio_state);
         break;
       }
       else if (millis() - packet_tx_ms_clock > PACKET_TX_TIMEOUT_SEC*1000l) {
         D_println(F("[STM32WL]: transmission timed out "));  // timed out waiting for the transmission to finish.
-        state = END_TRANSMIT;
+        radio_state = END_TRANSMIT;
         D_print(F("[STATE MACHINE]: transition to state: "));
-        D_println(state);
+        D_println(radio_state);
         break;     
       }
       else {
@@ -214,17 +214,17 @@ void loop() {
 
     case END_TRANSMIT:
       D_print(F("[STM32WL]: finishing transmit "));
-      radio_state = radio.finishTransmit();
-      check_radio_state(radio_state, false);
+      radiolib_state = radio.finishTransmit();
+      check_radio_state(radiolib_state, false);
 
       D_print(F("[STM32WL]: starting receive "));
-      radio_state = radio.startReceive();
+      radiolib_state = radio.startReceive();
       // if we fail to put the radio back into receive mode, we could get stuck here, so reset the mcu. 
       check_radio_state(radio_state, true); 
       
-      state = LISTEN; // go back to listening
+      radio_state = LISTEN; // go back to listening
       D_print(F("[STATE MACHINE]: transition to state: "));
-      D_println(state);
+      D_println(radio_state);
       break;
   }
 }
