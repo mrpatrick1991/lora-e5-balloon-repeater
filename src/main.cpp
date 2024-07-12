@@ -66,6 +66,10 @@ void setup() {
   D_SerialBegin(DEBUG_SERIAL_BAUD);
 
   D_println(F("[MCU]: start"));
+
+  memset(rx_buffer,0,RX_BUFFER_MAX_SIZE); // clear the receive buffer
+  rx_buffer_size = 0;
+
   D_print(F("[GPS]: initializing... "));
   gps_serial.begin(GPS_BAUD);
   if (GPS_USE_ENABLE_PIN) {
@@ -218,12 +222,12 @@ void loop() {
       check_radio_state(radiolib_state, false);
 
       D_print(F("[STM32WL]: starting receive "));
+      memset(rx_buffer,0,RX_BUFFER_MAX_SIZE); // clear the receive buffer
+      rx_buffer_size = 0;
+
       radiolib_state = radio.startReceive();
       // if we fail to put the radio back into receive mode, we could get stuck here, so reset the mcu. 
       check_radio_state(radio_state, true); 
-      
-      memset(rx_buffer,0,RX_BUFFER_MAX_SIZE); // clear the receive buffer
-      rx_buffer_size = 0;
 
       radio_state = LISTEN; // go back to listening
       D_print(F("[STATE MACHINE]: transition to state: "));
