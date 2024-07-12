@@ -50,7 +50,7 @@ bool check_radio_state(int state, bool reset_on_error) {
     D_print(F("radio failure, code: "));
     D_println(state);
     if (reset_on_error) {
-      delay(1000); //if the radio failed to initialize, there is a hardware problem. wait a moment and attempt a system reset.
+      delay(1000); // if the radio failed to initialize, there is a hardware problem. wait a moment then attempt a system reset.
       NVIC_SystemReset();
     }
     return false;
@@ -118,7 +118,7 @@ void loop() {
     gps.encode(gps_serial.read()); // read NMEA characters from the GPS as they come in
   }
 
-  if (DEBUG) { // print GPS data every 5 seconds if debug is enabled
+  if (DEBUG) { // print GPS data if debug is enabled
     if (millis() - debug_print_ms_clock > GPS_DEBUG_PRINT_SEC*1000l) {
       debug_print_ms_clock = millis();
       D_print(F("[GPS]: characters read: "));
@@ -189,7 +189,7 @@ void loop() {
       D_println(radio_state);
       break;
       
-    case WAIT_TRANSMIT: // we are waiting for packet transmission to finish. we cannot receive during this time.
+    case WAIT_TRANSMIT: // we are waiting for packet transmission to finish. and cannot receive during this time.
       if (packet_flag) {
         packet_flag = false;
         D_print(F("[STM32WL]: transmission finished, time elapsed: "));
@@ -222,6 +222,9 @@ void loop() {
       // if we fail to put the radio back into receive mode, we could get stuck here, so reset the mcu. 
       check_radio_state(radio_state, true); 
       
+      memset(rx_buffer,0,RX_BUFFER_MAX_SIZE); // clear the receive buffer
+      rx_buffer_size = 0;
+
       radio_state = LISTEN; // go back to listening
       D_print(F("[STATE MACHINE]: transition to state: "));
       D_println(radio_state);
