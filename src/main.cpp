@@ -4,6 +4,10 @@
 #include <TinyGPS++.h>
 #include <HardwareSerial.h>
 #include <pb.h>
+#include <pb_common.h>
+#include <pb_encode.h>
+#include <pb_decode.h>
+#include "meshtastic/mesh.pb.h"
 #include "config.h"
 
 // hardware definitions, specific to the LoRa e5 from Seeed Studio
@@ -40,6 +44,13 @@ long debug_print_ms_clock = 0;
 enum RADIO_STATE radio_state;
 volatile bool packet_flag = false;
 
+// protobufs
+uint8_t pb_buffer[512];   // hold encoded protobuf bytes
+size_t pb_message_length; // track protobuf buffer size
+meshtastic_Position pb_pos = meshtastic_Position_init_zero;      // position packet protobuf (latitude, longitude, etc)
+meshtastic_NodeInfo pb_nodeinfo = meshtastic_NodeInfo_init_zero; // node info packet protobuf (name, device type, etc)
+pb_ostream_t stream = pb_ostream_from_buffer(pb_buffer, sizeof(pb_buffer));
+
 // callback functions for when packets are received or transmitted
 void set_packet_flag(void) {
     packet_flag = true;
@@ -50,7 +61,7 @@ bool check_radio_state(int state, bool reset_on_error) {
     D_print(F("radio failure, code: "));
     D_println(state);
     if (reset_on_error) {
-      delay(1000); // if the radio failed to initialize, there is a hardware problem. wait a moment then attempt a system reset.
+      delay(1000); // if the radio failed to initialize, there is a hardware problem. wait a moment then attempt a reset.
       NVIC_SystemReset();
     }
     return false;
@@ -62,13 +73,14 @@ bool check_radio_state(int state, bool reset_on_error) {
 }
 
 void setup() {
+
   // hardware
   D_SerialBegin(DEBUG_SERIAL_BAUD);
 
   D_println(F("[MCU]: start"));
 
-  //memset(rx_buffer,0,RX_BUFFER_MAX_SIZE); // clear the receive buffer
-  //rx_buffer_size = 0;
+  memset(rx_buffer,0,RX_BUFFER_MAX_SIZE); // clear the receive buffer
+  rx_buffer_size = 0;
 
   D_print(F("[GPS]: initializing... "));
   gps_serial.begin(GPS_BAUD);
@@ -222,8 +234,8 @@ void loop() {
       check_radio_state(radiolib_state, false);
 
       D_print(F("[STM32WL]: starting receive "));
-      //memset(rx_buffer,0,RX_BUFFER_MAX_SIZE); // clear the receive buffer
-      //rx_buffer_size = 0;
+      memset(rx_buffer,0,RX_BUFFER_MAX_SIZE); // clear the receive buffer
+      rx_buffer_size = 0;
 
       radiolib_state = radio.startReceive();
       // if we fail to put the radio back into receive mode, we could get stuck here, so reset the mcu. 

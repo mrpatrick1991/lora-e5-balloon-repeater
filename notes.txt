@@ -1,0 +1,1 @@
+python /Users/patrick/Dev/lora-e5-balloon-repeater/.pio/libdeps/lora_e5_dev_board/Nanopb/generator/nanopb_generator.py meshtastic/*.proto
