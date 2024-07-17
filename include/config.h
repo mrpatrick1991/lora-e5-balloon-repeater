@@ -3,12 +3,13 @@
 #define DEBUG_SERIAL Serial
 #define GPS_DEBUG_PRINT_SEC 5 // print GPS data every n seconds when debug is enabled
 
-// telemetry settings
-#define NODEINFO_SEND_SEC 300 // send meshtastic node info packet every 5 minutes
-#define POSITION_SEND_SEC 120 // send meshtastic position packets every 2 minutes
-#define NODE_LONG_NAME "HIGHBALL-1" // meshtastic long name
-#define NODE_SHORT_NAME "HBA1"      // meshtastic short name
-#define NODE_NUMBER 123456          // meshtastic node number
+// meshtastic settings
+#define ENCRYPT_AES_KEY "1PG7OiApB1nwvP+rz05pAQ==" // default encryption key in base64
+#define NODEINFO_SEND_SEC 300                      // send meshtastic node info packet every 5 minutes
+#define POSITION_SEND_SEC 120                      // send meshtastic position packets every 2 minutes
+#define NODE_LONG_NAME "HIGHBALL-1"                // long name
+#define NODE_SHORT_NAME "HBA1"                     // short name
+#define NODE_NUMBER 123456                         // node number
 
 // radio settings
 #define DEBUG_SERIAL_BAUD 115200

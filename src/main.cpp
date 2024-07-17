@@ -41,6 +41,8 @@ byte rx_buffer[RX_BUFFER_MAX_SIZE];
 int rx_buffer_size = 0;
 long packet_tx_ms_clock = 0;
 long debug_print_ms_clock = 0;
+long nodeinfo_ms_clock = 0;
+long position_ms_clock = 0;
 enum RADIO_STATE radio_state;
 volatile bool packet_flag = false;
 
@@ -125,7 +127,8 @@ void setup() {
   check_radio_state(radiolib_state, true);
 
   radio_state = LISTEN; // end of setup, start listening for incoming packets
-  D_println(F("[MCU]: startup finished, running state machine."));
+  D_println(F("[MCU]: startup finished, running state machine."));  
+
 }
 
 void loop() {
@@ -155,6 +158,20 @@ void loop() {
   switch (radio_state) {
 
     case LISTEN:
+
+      if (millis() - nodeinfo_ms_clock > NODEINFO_SEND_SEC*1000l) {
+        node_info_ms_clock = millis(); 
+        D_println(F("[STATE MACHINE]: send NodeInfo packet"));
+        memset(rx_buffer,0,RX_BUFFER_MAX_SIZE); 
+        rx_buffer_size = 0;
+
+        // assemble the packet here
+        radio_state = START_TRANSMIT; // a valid packet was received, so start repeating it.
+        D_print(F("[STATE MACHINE]: transition to state: "));
+        D_println(radio_state);
+        break;
+      }
+
       if (packet_flag) {
         packet_flag = false;
         rx_buffer_size = radio.getPacketLength();
