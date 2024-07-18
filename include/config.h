@@ -2,22 +2,22 @@
 #define DEBUG true
 #define DEBUG_SERIAL Serial
 #define GPS_DEBUG_PRINT_SEC 5 // print GPS data every n seconds when debug is enabled
+#define DEBUG_SERIAL_BAUD 115200
 
 // meshtastic settings
 #define ENCRYPT_AES_KEY "1PG7OiApB1nwvP+rz05pAQ==" // default encryption key in base64
-#define NODEINFO_SEND_SEC 300                      // send meshtastic node info packet every 5 minutes
+#define NODEINFO_SEND_SEC 10                       // send meshtastic node info packet every 5 minutes
 #define POSITION_SEND_SEC 120                      // send meshtastic position packets every 2 minutes
+#define NODE_ID "123456"                           // node identity
 #define NODE_LONG_NAME "HIGHBALL-1"                // long name
 #define NODE_SHORT_NAME "HBA1"                     // short name
-#define NODE_NUMBER 123456                         // node number
 
 // radio settings
-#define DEBUG_SERIAL_BAUD 115200
 #define GPS_SERIAL_BAUD 9600
 
-#define RX_BUFFER_MAX_SIZE 256
-//#define LORA_FREQ_MHZ 906.875
-#define LORA_FREQ_MHZ 902.125
+#define PACKET_MAX_SIZE 512
+#define LORA_FREQ_MHZ 906.875
+//#define LORA_FREQ_MHZ 902.125
 #define LORA_BW_KHZ 250.0
 #define LORA_SPREAD_FACTOR 11
 #define LORA_CR 5

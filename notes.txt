@@ -1,1 +1,4 @@
+pip install protobuf grpcio-tools 
+cd protobufs 
 python /Users/patrick/Dev/lora-e5-balloon-repeater/.pio/libdeps/lora_e5_dev_board/Nanopb/generator/nanopb_generator.py meshtastic/*.proto
+cp meshtastic/mesh.pb.c ../lora-e5-balloon-repeater/src
