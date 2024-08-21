@@ -44,7 +44,6 @@ int packet_buffer_size = 0;
 pb_byte_t data_buffer[237]; // container for the Data protobuf encoded bytes
 int data_buffer_size = 0;
 
-
 long packet_tx_ms_clock = 0;
 long debug_print_ms_clock = 0;
 long nodeinfo_ms_clock = 0;
@@ -59,7 +58,7 @@ int pb_buffer_size = 0;
 
 meshtastic_Data pb_data = meshtastic_Data_init_default;          // wrapper protobuf around position or node info
 meshtastic_Position pb_pos = meshtastic_Position_init_zero;      // position packet protobuf (latitude, longitude, etc)
-meshtastic_User pb_nodeinfo = meshtastic_User_init_zero; // node info packet protobuf (name, device type, etc)
+meshtastic_User pb_nodeinfo = meshtastic_User_init_zero;         // node info packet protobuf (name, device type, etc)
 
 // callback functions for when packets are received or transmitted
 void set_packet_flag(void) {
@@ -94,26 +93,21 @@ void setup() {
 
   D_print(F("[GPS]: initializing... "));
   gps_serial.begin(GPS_BAUD);
-  if (GPS_USE_ENABLE_PIN) {
-    pinMode(GPS_ENABLE_PIN, OUTPUT);
-    digitalWrite(GPS_ENABLE_PIN, HIGH);
-  }
 
   debug_print_ms_clock = millis();
   bool gps_ok = false; 
+
   while(millis() - debug_print_ms_clock <= 5000l) { // give the GPS 5 seconds to provide valid NMEA data
     while (gps_serial.available()) {
       gps.encode(gps_serial.read()); 
     }
-    if (gps.charsProcessed() > 0 && gps.passedChecksum() > 0) {
-      gps_ok = true;
+    if (gps.charsProcessed() > 0 && gps.passedChecksum() > 0) { // we received data and at least one valid sentence
       D_println("OK");
       break;
     }
   }
 
   if (!gps_ok) {
-    delay(1000); // wait a second
     D_println(F("[GPS]: not receiving valid NMEA sentences. System reset."));
     NVIC_SystemReset(); // if no valid data from the GPS is received, it's a hardware problem, try a system reset.
   }
@@ -134,14 +128,14 @@ void setup() {
   radiolib_state = radio.startReceive();
   check_radio_state(radiolib_state, true);
 
-  state = SEND_TELEMETRY; // end of setup, start state machine by sending telemetry.
-  D_println(F("[MCU]: startup finished, running state machine."));  
+  state = SEND_TELEMETRY; // end of setup, enter state machine.
+  D_println(F("[STM32WL]: startup finished, entering state machine."));  
 }
 
 void loop() {
 
-  while (gps_serial.available()) {
-    gps.encode(gps_serial.read()); // read NMEA characters from the GPS as they come in
+  while (gps_serial.available()) { // read NMEA characters from the GPS as they come in
+    gps.encode(gps_serial.read()); 
   }
 
   if (DEBUG) { // periodically print GPS data if debug is enabled
